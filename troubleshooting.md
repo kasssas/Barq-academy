@@ -113,3 +113,30 @@ The baseline was investigated using the following commands and techniques:
 - **Retest evidence**: (Not yet performed) Data loss has not yet been experimentally proven through a container recreation test. This requires a targeted persistence/recreation test following repairs.
 - **Related commit**: Baseline evidence was collected from the environment built from commit `8442da3`. No fix commit exists yet.
 - **Remaining uncertainty**: Need to prove record survival across PostgreSQL recreation once fixed.
+
+---
+
+## Phase 2: Fix Group 1 (Application + NGINX routing) Retest Evidence
+
+The following fixes were implemented and verified on the Ubuntu runtime environment:
+* Flask bind address (changed `APP_HOST` to `0.0.0.0`)
+* Application healthcheck endpoint (changed from `/healthz` to `/health`)
+* `app-02` instance identity (changed `INSTANCE_ID` to `app-02`)
+* NGINX upstream port for `app-01` (changed to `8080`)
+* NGINX published container port (changed mapping to `:80`)
+
+### Verification Evidence
+1. `docker compose config` completed successfully after the changes.
+2. `docker compose up -d --force-recreate` completed successfully.
+3. `docker compose ps` showed:
+   * app-01: healthy
+   * app-02: healthy
+   * nginx: Up, host 127.0.0.1:8080 -> container 80
+   * postgres: healthy
+   * redis: healthy
+4. `curl -i http://127.0.0.1:8080/` returned HTTP 200 and `X-Instance-ID: app-01`.
+5. `curl -i http://127.0.0.1:8080/health` returned HTTP 200 and `X-Instance-ID: app-01`.
+6. `curl -i http://127.0.0.1:8080/instance` returned HTTP 200 with `instance_id` app-01.
+7. Ten repeated requests to `/instance` alternated between `app-01` and `app-02`, proving NGINX is routing traffic to both backend instances.
+
+*Note: The `/ready` endpoint has not been fully verified and backend database/cache operations are not claimed as working yet, as PostgreSQL and Redis connection configurations are pending for the next fix group.*
