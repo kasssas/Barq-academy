@@ -140,3 +140,29 @@ The following fixes were implemented and verified on the Ubuntu runtime environm
 7. Ten repeated requests to `/instance` alternated between `app-01` and `app-02`, proving NGINX is routing traffic to both backend instances.
 
 *Note: The `/ready` endpoint has not been fully verified and backend database/cache operations are not claimed as working yet, as PostgreSQL and Redis connection configurations are pending for the next fix group.*
+
+---
+
+## Phase 2: Fix Group 2 (PostgreSQL + Redis connectivity) Retest Evidence
+
+### Root causes fixed
+* The application was configured to connect to PostgreSQL on port 5433, while PostgreSQL listens on container port 5432.
+* The application was configured to connect to Redis on port 6380, while Redis listens on container port 6379.
+* The PostgreSQL password in `config/app.env` did not match the `POSTGRES_PASSWORD` configured for the PostgreSQL service.
+
+### Fix
+* Updated `config/app.env` so the application uses PostgreSQL port 5432.
+* Updated the Redis URL to use port 6379.
+* Updated the PostgreSQL connection credentials to match the PostgreSQL service configuration.
+
+### Verified evidence
+1. `git diff --check` passed after the configuration change.
+2. `docker compose up -d --force-recreate app-01 app-02` completed successfully.
+3. Both app containers returned `healthy` in `docker compose ps`.
+4. `/ready` was successfully tested through NGINX.
+5. A POST request to `/records` successfully created a record.
+6. A GET request to `/records` successfully returned records, proving PostgreSQL read/write operations through the application.
+7. Repeated requests to `/counter` successfully incremented the counter, proving Redis operations through the application.
+8. The direct socket connectivity tests to `postgres:5432` and `redis:6379` succeeded.
+
+*Note: PostgreSQL persistence is not fixed yet. Network isolation/security requirements are also still pending.*
