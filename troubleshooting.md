@@ -52,9 +52,9 @@ The baseline was investigated using the following commands and techniques:
 - **Symptom**: Expected authentication mismatch (though masked by the connection refused error).
 - **Hypothesis**: Database passwords do not align between application and infrastructure.
 - **Command / test**: Source and configuration inspection.
-- **Actual output / evidence**: `config/app.env` uses a password ending in `K8d`. `docker-compose.yml` configures PostgreSQL with a password ending in `K8c`.
+- **Actual output / evidence**: Configuration inspection showed that the PostgreSQL password configured for the application did not match the password configured for the PostgreSQL service.
 - **Root cause or current finding**: Configuration mismatch between the application environment configuration and the database initialization secrets.
-- **Planned fix**: (Planned / not yet applied) Ensure the application environment connects with the correct password (`K8c`).
+- **Planned fix**: (Planned / not yet applied) Ensure the application environment connects with the correct password.
 - **Retest evidence**: (Not yet performed)
 - **Related commit**: Baseline evidence was collected from the environment built from commit `8442da3`. No fix commit exists yet.
 - **Remaining uncertainty**: We have not run a proven authentication failure test because the wrong port prevented the app from reaching PostgreSQL in the first place.
@@ -165,4 +165,66 @@ The following fixes were implemented and verified on the Ubuntu runtime environm
 7. Repeated requests to `/counter` successfully incremented the counter, proving Redis operations through the application.
 8. The direct socket connectivity tests to `postgres:5432` and `redis:6379` succeeded.
 
-*Note: PostgreSQL persistence is not fixed yet. Network isolation/security requirements are also still pending.*
+*Note: At the time of Group 2 verification, PostgreSQL persistence and network isolation were still pending. These items were addressed and verified in Group 3.*
+
+---
+
+## Phase 2: Fix Group 3 (PostgreSQL Persistence + Network Isolation) Retest Evidence
+
+### Baseline findings
+* The PostgreSQL named volume `postgres-data` existed, but it was mounted at `/var/lib/postgresql/backup`.
+* PostgreSQL's actual data directory `/var/lib/postgresql/data` was mounted as `tmpfs`, so database data was not persisted in the named volume.
+* PostgreSQL was unnecessarily published on host port `15432`.
+* Redis was unnecessarily published on host port `16379`.
+* NGINX was attached to both the `frontend` and `backend` networks.
+
+### Investigation evidence
+The baseline was established using:
+* `docker volume inspect barq-assessment_postgres-data`
+* Running an Alpine container with the volume mounted showed the volume was empty.
+* `docker compose config`
+* `docker inspect` of nginx, app-01, postgres, and redis showed the original network memberships.
+
+### Root causes
+1. The named PostgreSQL volume was mounted to the wrong path while the real PostgreSQL data directory was ephemeral `tmpfs`.
+2. PostgreSQL and Redis had unnecessary host port publishing.
+3. NGINX had access to the backend network even though it only needs to communicate with the application containers.
+
+### Fix applied
+* Mount `postgres-data` to `/var/lib/postgresql/data`.
+* Remove the PostgreSQL `tmpfs` mount.
+* Remove PostgreSQL host port publishing.
+* Remove Redis host port publishing.
+* Keep NGINX on the `frontend` network only.
+* Keep the application containers on both `frontend` and `backend`.
+* Keep PostgreSQL and Redis on `backend` only.
+
+### Failed attempt
+* The first persistence test attempted to create a record using `{"name":"persistence-test"}`.
+* The API rejected it with `title_must_be_1_to_200_characters`.
+* This was an API request-field mistake, not a persistence failure.
+* The test was corrected to use the required `title` field and then succeeded.
+
+### Retest evidence
+* `docker compose config`
+* `docker compose up -d --force-recreate`
+* `docker compose ps`
+* PostgreSQL and Redis no longer have host port mappings; only NGINX is published on host port 8080.
+* A record was successfully created through `/records` using: `{"title":"persistence-test"}`
+* PostgreSQL was then recreated using: `docker compose rm -s -f postgres` followed by: `docker compose up -d postgres`
+* The previously created `persistence-test` record was still returned by `GET /records`, proving PostgreSQL persistence.
+* Network inspection confirmed:
+  * NGINX: frontend only
+  * app-01: frontend + backend
+  * postgres: backend only
+  * redis: backend only
+* Direct connectivity tests from app-01 succeeded:
+  * `POSTGRES CONNECTED`
+  * `REDIS CONNECTED`
+
+### Result
+* PostgreSQL persistence has been proven across container recreation.
+* PostgreSQL and Redis are no longer exposed through host ports.
+* NGINX is isolated from the backend network.
+* Application containers can still reach PostgreSQL and Redis through the backend network.
+* Only NGINX is publicly published on the host.
