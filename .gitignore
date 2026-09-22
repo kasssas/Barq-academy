@@ -4,6 +4,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+config/app.env
 .DS_Store
 Thumbs.db
 evidence/local/

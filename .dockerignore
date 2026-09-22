@@ -2,6 +2,7 @@
 .github
 .env
 .env.*
+config/app.env
 __pycache__
 **/__pycache__
 *.pyc
