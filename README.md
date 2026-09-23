@@ -1,97 +1,230 @@
 <img src="assets/barq-logo.svg" alt="BARQ Systems" width="180">
 
-# DevOps Internship Task - Starter v2
+# BARQ Academy – DevOps Assessment
 
-**Due date:** ____________________
+A Docker Compose–based DevOps assessment environment containing:
 
-**Time window:** 4 calendar days from the invitation email date/time.
+- NGINX reverse proxy (single public entry point)
+- Two Flask application instances (`app-01`, `app-02`)
+- PostgreSQL (persistence, named volume)
+- Redis (append-only persistence)
+- Separated `frontend` / `backend` Docker networks
+- Container health checks, readiness endpoints, and restart policies
+- CPU and memory resource limits
+- Validation, failure/recovery, backup/restore scripts
+- GitHub Actions CI workflow
 
-Read [the task](assessment/TASK.md), then [the API contract](assessment/APPLICATION.md).
-Everyone receives this same release. The environment is intentionally broken.
-Hidden issue types and count are not disclosed. Investigate this project; do not replace it.
+> **Note:** This is a Docker Compose assessment environment. It does not claim production-grade high availability or zero-downtime failover.
 
-## Included
+---
 
-- Flask API, PostgreSQL, Redis, Docker and NGINX starter files.
-- Three historical logs, a question template and documentation templates.
-- App-only tests and a recorded challenge script.
-- Unimplemented validation, failure-test and backup/restore placeholders.
+## Architecture
 
-Use synthetic lab accounts/data only. Supplied values are for this disposable exercise,
-never for real services. Keep the lab on your local machine; do not expose it publicly.
+![Architecture diagram](assets/architecture.png)
 
-## Before you start
+> *`assets/architecture.png` documents the current Docker Compose topology.*
 
-- Linux or WSL2, Python 3.12, Git and Docker with Compose.
-- Docker Desktop must use Linux containers. Run shell scripts in Linux/WSL.
-- Suggested capacity: 2 CPU cores, 4 GB free RAM and 3 GB free disk, plus Docker overhead.
-- Internet for first downloads and GitHub. No cloud account or paid registry required.
-- Use a machine where container names app-01, app-02, nginx, postgres and redis are unused.
-  Do not delete someone else's containers to free those names.
-- Intended public port: 8080 before the video, 8090 after the live change.
-  If either is occupied, ask the organizer for a documented workstation exception.
+**Topology summary:**
 
-## Start
+| Component | Network(s) | Published port |
+|-----------|------------|----------------|
+| NGINX | `frontend` only | `127.0.0.1:8080` |
+| `app-01`, `app-02` | `frontend` + `backend` | None (internal) |
+| PostgreSQL | `backend` only | None |
+| Redis | `backend` only | None |
 
-Clone the supplied Git bundle/repository. Keep both release commits and the v2 baseline tag.
-Set your own Git name/email before making changes.
+NGINX is the only service reachable from the host. Application containers bridge both networks to communicate with NGINX and the data stores. PostgreSQL and Redis are not accessible from NGINX or from the host.
 
-From the repository root:
+---
 
-```bash
-git status
-git log -2 --oneline
-cp .env.example .env
-docker version
-docker compose version
-docker compose -p barq-assessment up --build -d
-docker compose -p barq-assessment ps -a
-docker compose -p barq-assessment logs --no-color
-```
+## Prerequisites
 
-The initial environment is not expected to pass. Record what actually happens.
-The intended URL is http://127.0.0.1:8080; do not assume the starter configuration is correct.
+- Docker
+- Docker Compose
+- Python 3
 
-App-only checks use fake dependencies, not real SQL/Redis or Docker networking:
+---
+
+## Configuration / Secrets
+
+Configuration is supplied via `config/app.env` (local, Git-ignored).
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m unittest discover -s tests -v
+# Copy the safe template and fill in your values
+cp config/app.env.example config/app.env
 ```
 
-## Your work
-
-- Complete [assessment/TASK.md](assessment/TASK.md).
-- Implement validate.py, failure_test.py, backup.sh and restore.sh, or documented equivalents.
-  Placeholders deliberately exit 2; they are unfinished deliverables, not validation evidence.
-- Create .github/workflows/ci.yml yourself.
-- Complete the root report templates and docs/EVIDENCE_INDEX.md.
-- Add architecture.png or architecture.pdf.
-- Replace this README with copyable setup/build/run/test/failure/backup/restore/cleanup commands.
-- Commit as you work. Do not commit real secrets, backups, virtual environments or challenge state.
-
-## Recorded challenge
-
-Use the supplied video_challenge.sh unchanged. Read its code if needed; do not run it early.
-After repairing the environment, run it once, for the first time in the video working copy,
-during the continuous 12-18 minute recording. The script requires healthy services, both
-initial instances and the target network layout. Preflight failures make no runtime changes.
+The `BARQ_POSTGRES_PASSWORD` environment variable is required by Compose. Set it in your shell or in `config/app.env`:
 
 ```bash
-./video_challenge.sh
+export BARQ_POSTGRES_PASSWORD=<your-local-password>
 ```
 
-If you deliberately changed the project name, pass --project YOUR_PROJECT.
-An organizer-approved alternate local URL can be passed with --url http://127.0.0.1:PORT.
-The script touches only matching Compose-owned lab containers/networks.
-Keep the receipt in .assessment/challenge.json for the evidence index. Do not delete the
-one-run marker to retry. A local marker is not tamper-proof; ownership is judged from evidence.
-Do not use docker compose down to reset the runtime challenge.
+> **Important:** Never commit `config/app.env`. It is ignored by `.gitignore` and excluded from the Docker build context via `.dockerignore`.
 
-## Stop safely
+---
 
-Outside the recorded challenge, docker compose -p barq-assessment down stops this lab.
-Do not use --volumes during persistence tests. Avoid global Docker prune/cleanup commands.
-Back up anything you need before removing containers; investigate whether data actually persists.
+## Run the Environment
+
+```bash
+# Validate Compose configuration (no startup)
+docker compose -p barq-assessment config -q
+
+# Build images
+docker compose -p barq-assessment build
+
+# Start all services
+docker compose -p barq-assessment up -d
+
+# Check service status and health
+docker compose -p barq-assessment ps
+
+# View logs
+docker compose -p barq-assessment logs --no-color --tail=100
+
+# Stop and remove containers (preserves volumes)
+docker compose -p barq-assessment down
+```
+
+---
+
+## Application Endpoints
+
+All endpoints are accessed through NGINX at `http://127.0.0.1:8080`.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Root response; confirms the application is reachable. |
+| `/health` | GET | Application liveness check (used by Docker healthcheck). Returns 200 if the app process is alive. |
+| `/ready` | GET | Dependency readiness check. Verifies PostgreSQL and Redis connectivity. Returns 200 only when both are reachable. |
+| `/instance` | GET | Returns the `INSTANCE_ID` of the responding application container. |
+| `/records` | GET / POST | PostgreSQL-backed records endpoint. |
+| `/counter` | GET / POST | Redis-backed counter endpoint. |
+
+---
+
+## Validation
+
+```bash
+python3 validate.py
+```
+
+Performs bounded integration checks against the running environment:
+
+- Public NGINX access on `http://127.0.0.1:8080`
+- Application endpoint responses (`/`, `/health`, `/ready`, `/instance`, `/records`, `/counter`)
+- PostgreSQL and Redis readiness via `/ready`
+- Traffic reaching both `app-01` and `app-02`
+- Service health statuses
+- Network and port expectations
+
+---
+
+## Failure and Recovery
+
+```bash
+python3 failure_test.py
+```
+
+The test intentionally stops `app-01` while requests are in flight and then restarts it.
+
+**Observed test result:**
+
+- During the abrupt stop of `app-01`: **15 of 30 requests failed**; the remaining successful requests were served by `app-02`.
+- After restarting `app-01`: **40 of 40 requests succeeded**, with both instances available.
+
+> This demonstrates surviving-backend service availability during single-instance failure, but also exposes transient request failures that occur when a backend is abruptly stopped.
+
+---
+
+## Persistence
+
+PostgreSQL data is stored in a named Docker volume mounted at `/var/lib/postgresql/data`.
+
+Redis uses append-only file persistence (`--appendonly yes`).
+
+**Persistence:**
+
+PostgreSQL data survives container recreation via the named volume mounted at `/var/lib/postgresql/data`. This was verified by creating a record, recreating the container, and confirming the record remained available.
+
+**Backup and restore:**
+
+```bash
+# Create a backup
+./backup.sh
+
+# Restore from a backup file
+./restore.sh <backup_file>
+```
+
+Backup and restore functionality was verified locally: a backup was created, a subsequent database change was introduced, and then the backup was restored. Inspection confirmed the later change was removed and the original state was successfully restored.
+
+---
+
+## Log Analysis
+
+```bash
+python3 analyze_logs.py
+```
+
+Parses the three supplied historical log files (`logs/access.log`, `logs/error.log`, `logs/application.log`) and produces a reproducible report covering:
+
+- Request counts, error rates, and status code breakdown
+- Exact 5-minute failure buckets
+- Latency percentiles (median, p95)
+- Upstream retry behaviour
+- Incident timeline and correlated examples
+- Scope and limitations of the available log data
+
+See `log_analysis.md` for the detailed findings.
+
+---
+
+## CI
+
+The GitHub Actions workflow (`.github/workflows/ci.yml`) performs:
+
+1. **Checkout** – checks out the repository.
+2. **Compose validation** – runs `docker compose config -q`.
+3. **Build** – builds all images.
+4. **Start** – starts the full Compose environment.
+5. **Wait** – polls `http://localhost:8080/ready` until it returns HTTP 200.
+6. **Validate** – runs `python3 validate.py`.
+7. **Cleanup** – runs `docker compose down`.
+
+> The CI workflow validates the Compose configuration and performs an integration-style stack startup within GitHub Actions. It does not claim to prove production readiness.
+
+---
+
+## Troubleshooting and Documentation
+
+| File | Purpose |
+|------|---------|
+| [`troubleshooting.md`](troubleshooting.md) | Investigation journal: baseline findings, root causes, fixes, and retest evidence |
+| [`log_analysis.md`](log_analysis.md) | Answers to the 10 historical log diagnostic questions |
+| [`decisions.md`](decisions.md) | Architectural decision records with tradeoffs and limitations |
+| [`security_review.md`](security_review.md) | Security controls implemented and remaining production risks |
+| [`AI_USAGE.md`](AI_USAGE.md) | AI tools used and human verification responsibilities |
+
+---
+
+## Evidence Index
+
+| Area | Relevant files | Commit |
+|------|---------------|--------|
+| Baseline investigation | `troubleshooting.md` | `8442da3` |
+| Application / NGINX fixes | `docker-compose.yml`, `nginx/nginx.conf` | `5c9ca06` |
+| DB / Redis connectivity | `config/app.env` | `5992c22` |
+| Persistence / network isolation | `docker-compose.yml` | `58ae345` |
+| Runtime reliability (restarts, limits) | `docker-compose.yml` | `80d405d` |
+| Security fixes | `Dockerfile`, `docker-compose.yml`, `.gitignore`, `.dockerignore` | `1a1d567` |
+| Validation script | `validate.py` | `4034e2f` |
+| Failure / recovery test | `failure_test.py` | `21e3475` |
+| Backup / restore scripts | `backup.sh`, `restore.sh` | `187c49f` |
+| CI workflow | `.github/workflows/ci.yml` | `c5b5e82` |
+| Log analysis | `analyze_logs.py`, `log_analysis.md` | `ed281b7` |
+| Decision records | `decisions.md` | `fcfc037` |
+| Security review | `security_review.md` | `e45c7e8` |
+| AI usage disclosure | `AI_USAGE.md` | `5f0f654` |
+
+> Video timestamps will be added after the final recording.
