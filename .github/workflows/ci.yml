@@ -39,7 +39,7 @@ jobs:
         run: |
           echo "Polling public endpoint until /ready returns HTTP 200..."
           # Bounded 60s timeout polling the internal health check logic
-          timeout 60 bash -c 'while ! curl -s -f http://localhost:8080/ready > /dev/null; do sleep 3; done'
+          timeout 60 bash -c 'while ! curl -s -f http://localhost:8090/ready > /dev/null; do sleep 3; done'
           echo "Services are healthy and reachable."
 
       - name: Run validation script

@@ -16,7 +16,7 @@ import sys
 import urllib.error
 import urllib.request
 
-BASE_URL = "http://localhost:8080"
+BASE_URL = "http://localhost:8090"
 TIMEOUT = 5          # seconds per HTTP request
 INSTANCE_REQUESTS = 20   # total requests for load-balancer check
 PROJECT = "barq-assessment"
@@ -201,10 +201,12 @@ for _ in range(INSTANCE_REQUESTS):
     except Exception:
         req_errors += 1
 
+EXPECTED_INSTANCES = {"app-01", "app-02", "app-03"}
+
 record(
-    f"Both app-01 and app-02 observed across {INSTANCE_REQUESTS} requests to /instance",
-    "app-01" in observed_instances and "app-02" in observed_instances,
-    f"observed={sorted(observed_instances)} errors={req_errors}",
+    f"All expected instances observed across {INSTANCE_REQUESTS} requests to /instance",
+    observed_instances == EXPECTED_INSTANCES,
+    f"expected={sorted(EXPECTED_INSTANCES)} observed={sorted(observed_instances)} errors={req_errors}",
 )
 
 # ---------------------------------------------------------------------------
@@ -212,7 +214,7 @@ record(
 # ---------------------------------------------------------------------------
 print("\n=== C: Docker service health ===")
 
-REQUIRED_SERVICES = ["postgres", "redis", "nginx", "app-01", "app-02"]
+REQUIRED_SERVICES = ["postgres", "redis", "nginx", "app-01", "app-02", "app-03"]
 
 rc, ps_out = compose("ps", "--format", "json")
 if rc != 0 or not ps_out:
@@ -275,7 +277,7 @@ for svc in REQUIRED_SERVICES:
 # ---------------------------------------------------------------------------
 print("\n=== D: Network / port isolation ===")
 
-SERVICES_NO_HOST_PORTS = ["postgres", "redis", "app-01", "app-02"]
+SERVICES_NO_HOST_PORTS = ["postgres", "redis", "app-01", "app-02", "app-03"]
 
 for svc in SERVICES_NO_HOST_PORTS:
     info = container_inspect(svc)
@@ -298,7 +300,7 @@ if isinstance(nginx_info, dict):
     nginx_ports = (nginx_info.get("NetworkSettings") or {}).get("Ports") or {}
 nginx_published = any(v for v in nginx_ports.values() if v is not None)
 record(
-    "nginx has a host-published port (8080)",
+    "nginx has a host-published port (8090)",
     nginx_published,
     f"ports={nginx_ports}",
 )
@@ -308,6 +310,7 @@ NETWORK_MEMBERSHIP = {
     "nginx":   (["frontend"], []),
     "app-01":  (["frontend", "backend"], []),
     "app-02":  (["frontend", "backend"], []),
+    "app-03":  (["frontend", "backend"], []),
     "postgres":(["backend"], []),
     "redis":   (["backend"], []),
 }
