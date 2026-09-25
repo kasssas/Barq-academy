@@ -5,7 +5,7 @@
 A Docker Compose–based DevOps assessment environment containing:
 
 - NGINX reverse proxy (single public entry point)
-- Two Flask application instances (`app-01`, `app-02`)
+- Three Flask application instances (`app-01`, `app-02`, `app-03`)
 - PostgreSQL (persistence, named volume)
 - Redis (append-only persistence)
 - Separated `frontend` / `backend` Docker networks
@@ -28,8 +28,8 @@ A Docker Compose–based DevOps assessment environment containing:
 
 | Component | Network(s) | Published port |
 |-----------|------------|----------------|
-| NGINX | `frontend` only | `127.0.0.1:8080` |
-| `app-01`, `app-02` | `frontend` + `backend` | None (internal) |
+| NGINX | `frontend` only | `127.0.0.1:8090` |
+| `app-01`, `app-02`, `app-03` | `frontend` + `backend` | None (internal) |
 | PostgreSQL | `backend` only | None |
 | Redis | `backend` only | None |
 
@@ -90,7 +90,7 @@ docker compose -p barq-assessment down
 
 ## Application Endpoints
 
-All endpoints are accessed through NGINX at `http://127.0.0.1:8080`.
+All endpoints are accessed through NGINX at `http://127.0.0.1:8090`.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -111,10 +111,10 @@ python3 validate.py
 
 Performs bounded integration checks against the running environment:
 
-- Public NGINX access on `http://127.0.0.1:8080`
+- Public NGINX access on `http://127.0.0.1:8090`
 - Application endpoint responses (`/`, `/health`, `/ready`, `/instance`, `/records`, `/counter`)
 - PostgreSQL and Redis readiness via `/ready`
-- Traffic reaching both `app-01` and `app-02`
+- Traffic reaching all three application instances (`app-01`, `app-02`, `app-03`)
 - Service health statuses
 - Network and port expectations
 
@@ -134,6 +134,8 @@ The test intentionally stops `app-01` while requests are in flight and then rest
 - After restarting `app-01`: **40 of 40 requests succeeded**, with both instances available.
 
 > This demonstrates surviving-backend service availability during single-instance failure, but also exposes transient request failures that occur when a backend is abruptly stopped.
+
+> This test was executed before the final `app-03` expansion, when the environment had two application instances (`app-01`, `app-02`). The final runtime was later expanded to three application instances.
 
 ---
 
@@ -188,7 +190,7 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) performs:
 2. **Compose validation** – runs `docker compose config -q`.
 3. **Build** – builds all images.
 4. **Start** – starts the full Compose environment.
-5. **Wait** – polls `http://localhost:8080/ready` until it returns HTTP 200.
+5. **Wait** – polls `http://localhost:8090/ready` until it returns HTTP 200.
 6. **Validate** – runs `python3 validate.py`.
 7. **Cleanup** – runs `docker compose down`.
 
@@ -210,21 +212,22 @@ The GitHub Actions workflow (`.github/workflows/ci.yml`) performs:
 
 ## Evidence Index
 
-| Area | Relevant files | Commit |
-|------|---------------|--------|
-| Baseline investigation | `troubleshooting.md` | `8442da3` |
-| Application / NGINX fixes | `docker-compose.yml`, `nginx/nginx.conf` | `5c9ca06` |
-| DB / Redis connectivity | `config/app.env` | `5992c22` |
-| Persistence / network isolation | `docker-compose.yml` | `58ae345` |
-| Runtime reliability (restarts, limits) | `docker-compose.yml` | `80d405d` |
-| Security fixes | `Dockerfile`, `docker-compose.yml`, `.gitignore`, `.dockerignore` | `1a1d567` |
-| Validation script | `validate.py` | `4034e2f` |
-| Failure / recovery test | `failure_test.py` | `21e3475` |
-| Backup / restore scripts | `backup.sh`, `restore.sh` | `187c49f` |
-| CI workflow | `.github/workflows/ci.yml` | `c5b5e82` |
-| Log analysis | `analyze_logs.py`, `log_analysis.md` | `ed281b7` |
-| Decision records | `decisions.md` | `fcfc037` |
-| Security review | `security_review.md` | `e45c7e8` |
-| AI usage disclosure | `AI_USAGE.md` | `5f0f654` |
-
-> Video timestamps will be added after the final recording.
+| Area | Relevant files | Commit | Video evidence |
+|------|----------------|--------|----------------|
+| Baseline investigation | `troubleshooting.md` | `8442da3` | 00:00–01:50 |
+| Application / NGINX fixes | `docker-compose.yml`, `nginx/nginx.conf` | `5c9ca06` | 01:50–03:55 |
+| DB / Redis connectivity | `config/app.env` | `5992c22` | 01:50–03:55 |
+| Persistence / network isolation | `docker-compose.yml` | `58ae345` | 05:45–07:27 |
+| Runtime reliability (restarts, limits) | `docker-compose.yml` | `80d405d` | 01:50–03:55 |
+| Security fixes | `Dockerfile`, `docker-compose.yml`, `.gitignore`, `.dockerignore` | `1a1d567` | 01:50–03:55 |
+| Validation script | `validate.py` | `4034e2f` | 07:27–10:11 |
+| Failure / recovery test | `failure_test.py` | `21e3475` | 03:55–05:45, 07:27–10:11 |
+| Backup / restore scripts | `backup.sh`, `restore.sh` | `187c49f` | 05:45–07:27 |
+| CI workflow | `.github/workflows/ci.yml` | `c5b5e82` | Final repository state |
+| Log analysis | `analyze_logs.py`, `log_analysis.md` | `ed281b7` | 07:27–10:11 |
+| Decision records | `decisions.md` | `fcfc037` | Final repository state |
+| Security review | `security_review.md` | `e45c7e8` | Final repository state |
+| AI usage disclosure | `AI_USAGE.md` | `5f0f654` | Final repository state |
+| Video challenge / runtime diagnosis | `video_challenge.sh`, `docker-compose.yml` | Final runtime state | 10:11–12:49 |
+| Final runtime: port 8090 + app-03 | `docker-compose.yml`, `nginx/nginx.conf`, `validate.py`, `.github/workflows/ci.yml` | `257b26f` | 12:49–20:49 |
+| Final Git verification / push | Git history and repository state | `257b26f` | 20:49–23:35 |
